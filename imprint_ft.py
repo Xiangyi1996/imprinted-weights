@@ -15,7 +15,9 @@ import models
 import loader
 import numpy as np
 
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+# from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+
+from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data', metavar='DIR', default='CUB_200_2011',
@@ -48,15 +50,23 @@ parser.add_argument('--num-sample', default=1, type=int,
 parser.add_argument('--test-novel-only', action='store_true', help='whether only test on novel classes')
 best_prec1 = 0
 
+device = torch.device("cuda")
+
 
 def main():
+
     global args, best_prec1
     args = parser.parse_args()
+    print(args)
+    fileSh = 'script/imprint_ft.sh'
+    print('*' * 10, 'Save .sh in ', args.checkpoint, '*' * 10)
+    shutil.copy(fileSh, os.path.join(args.checkpoint))
 
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
+    torch.cuda.synchronize()
 
-    model = models.Net().cuda()
+    model = models.Net().to(device)
 
 
     print('==> Reading from model checkpoint..')
@@ -66,8 +76,11 @@ def main():
     print("=> loaded model checkpoint '{}' (epoch {})"
             .format(args.model, checkpoint['epoch']))
     cudnn.benchmark = True
+    # model = torch.nn.DataParallel(model, device_ids=range(torch.cuda.device_count()))
+    # print(range(torch.cuda.device_count()))
+    # model = model.module
 
-    # Data loading code
+    # Data loading code - Normalize to (-1,1) = [(0,1)-0.5 / 0.5]
     normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
                                      std=[0.5, 0.5, 0.5])
 
@@ -117,7 +130,7 @@ def main():
     print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters())/1000000.0))
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda()
+    criterion = nn.CrossEntropyLoss().to(device)
 
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.94)
@@ -163,7 +176,7 @@ def main():
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
             'optimizer' : optimizer.state_dict(),
-        }, is_best, checkpoint=args.checkpoint)
+        }, is_best, checkpoint=os.path.join(args.checkpoint))
 
     logger.close()
     logger.plot()
@@ -179,15 +192,16 @@ def imprint(novel_loader, model):
     # switch to evaluate mode
     model.eval()
     end = time.time()
-    bar = Bar('Imprinting', max=len(novel_loader))
+    #bar = Bar('Imprinting', max=len(novel_loader))
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(novel_loader):
             # measure data loading time
             data_time.update(time.time() - end)
 
-            input = input.cuda()
+            input = input.to(device)
 
             # compute output
+            #import ipdb;ipdb.set_trace()
             output = model.extract(input)
 
             if batch_idx == 0:
@@ -201,22 +215,22 @@ def imprint(novel_loader, model):
             end = time.time()
 
             # plot progress
-            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:}'.format(
-                        batch=batch_idx + 1,
-                        size=len(novel_loader),
-                        data=data_time.val,
-                        bt=batch_time.val,
-                        total=bar.elapsed_td,
-                        eta=bar.eta_td
-                        )
-            bar.next()
-        bar.finish()
+        #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:}'.format(
+        #                 batch=batch_idx + 1,
+        #                 size=len(novel_loader),
+        #                 data=data_time.val,
+        #                 bt=batch_time.val,
+        #                 total=bar.elapsed_td,
+        #                 eta=bar.eta_td
+        #                 )
+        #     bar.next()
+        # bar.finish()
     
     new_weight = torch.zeros(100, 256)
-    for i in range(100):
+    for i in range(100): #take output_stack where target_stack == 100-199(0,99) 's weight
         tmp = output_stack[target_stack == (i + 100)].mean(0) if not args.random else torch.randn(256)
-        new_weight[i] = tmp / tmp.norm(p=2)
-    weight = torch.cat((model.classifier.fc.weight.data, new_weight.cuda()))
+        new_weight[i] = tmp / tmp.norm(p=2) #1
+    weight = torch.cat((model.classifier.fc.weight.data, new_weight.to(device))) #pretrained weight concated with imprint_weight
     model.classifier.fc = nn.Linear(256, 200, bias=False)
     model.classifier.fc.weight.data = weight
 
@@ -231,14 +245,15 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
-    bar = Bar('Training  ', max=len(train_loader))
+    #bar = Bar('Training  ', max=len(train_loader))
     for batch_idx, (input, target) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-        
+        input = input.to(device)
+        # target = target.to(device, non_blocking=True)
+        target = target.to(device)
+
         # compute output
         output = model(input)
         loss = criterion(output, target)
@@ -260,19 +275,19 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         model.weight_norm()
         # plot progress
-        bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                    batch=batch_idx + 1,
-                    size=len(train_loader),
-                    data=data_time.val,
-                    bt=batch_time.val,
-                    total=bar.elapsed_td,
-                    eta=bar.eta_td,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                    top5=top5.avg,
-                    )
-        bar.next()
-    bar.finish()
+    #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+    #                 batch=batch_idx + 1,
+    #                 size=len(train_loader),
+    #                 data=data_time.val,
+    #                 bt=batch_time.val,
+    #                 total=bar.elapsed_td,
+    #                 eta=bar.eta_td,
+    #                 loss=losses.avg,
+    #                 top1=top1.avg,
+    #                 top5=top5.avg,
+    #                 )
+    #     bar.next()
+    # bar.finish()
     return (losses.avg, top1.avg)
     
 def validate(val_loader, model, criterion):
@@ -284,15 +299,15 @@ def validate(val_loader, model, criterion):
 
     # switch to evaluate mode
     model.eval()
-    bar = Bar('Testing   ', max=len(val_loader))
+    #bar = Bar('Testing   ', max=len(val_loader))
     with torch.no_grad():
         end = time.time()
         for batch_idx, (input, target) in enumerate(val_loader):
             # measure data loading time
             data_time.update(time.time() - end)
 
-            input = input.cuda()
-            target = target.cuda(non_blocking=True)
+            input = input.to(device)
+            target = target.to(device)
 
             # compute output
             output = model(input)
@@ -309,19 +324,19 @@ def validate(val_loader, model, criterion):
             end = time.time()
 
             # plot progress
-            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                        batch=batch_idx + 1,
-                        size=len(val_loader),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        total=bar.elapsed_td,
-                        eta=bar.eta_td,
-                        loss=losses.avg,
-                        top1=top1.avg,
-                        top5=top5.avg,
-                        )
-            bar.next()
-        bar.finish()
+        #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+        #                 batch=batch_idx + 1,
+        #                 size=len(val_loader),
+        #                 data=data_time.avg,
+        #                 bt=batch_time.avg,
+        #                 total=bar.elapsed_td,
+        #                 eta=bar.eta_td,
+        #                 loss=losses.avg,
+        #                 top1=top1.avg,
+        #                 top5=top5.avg,
+        #                 )
+        #     bar.next()
+        # bar.finish()
     return (losses.avg, top1.avg)
 
 
@@ -330,6 +345,7 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+
 
 if __name__ == '__main__':
     main()

@@ -13,8 +13,10 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import models
 import loader
+from tensorboardX import SummaryWriter
+import random
 
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data', metavar='DIR', default='CUB_200_2011',
@@ -42,10 +44,18 @@ parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
 
 best_prec1 = 0
 
+device = torch.device("cuda")
+
 
 def main():
     global args, best_prec1
     args = parser.parse_args()
+
+    # run_id = random.randint(1,100000)
+    # logdir = os.path.join('runs', os.path.basename(args.config)[:-4] , str(run_id))
+    # writer = SummaryWriter(log_dir=logdir)
+    # print('RUNDIR: {}'.format(logdir))
+    # Logger
 
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
@@ -120,7 +130,6 @@ def main():
         print('\nEpoch: [%d | %d] LR: %f' % (epoch + 1, args.epochs, lr))
         # train for one epoch
         train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch)
-
         # evaluate on validation set
         test_loss, test_acc = validate(val_loader, model, criterion)
 
@@ -156,7 +165,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
-    bar = Bar('Training', max=len(train_loader))
+    #bar = Bar('Training', max=len(train_loader))
     for batch_idx, (input, target) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -165,7 +174,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda(non_blocking=True)
 
         # compute output
-        output = model(input)
+        output = model(input) #64,100
         loss = criterion(output, target)
 
         # measure accuracy and record loss
@@ -177,6 +186,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
+        #print('loss')
         optimizer.step()
 
         # measure elapsed time
@@ -185,19 +195,19 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         model.weight_norm()
         # plot progress
-        bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                    batch=batch_idx + 1,
-                    size=len(train_loader),
-                    data=data_time.val,
-                    bt=batch_time.val,
-                    total=bar.elapsed_td,
-                    eta=bar.eta_td,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                    top5=top5.avg,
-                    )
-        bar.next()
-    bar.finish()
+    #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+    #                 batch=batch_idx + 1,
+    #                 size=len(train_loader),
+    #                 data=data_time.val,
+    #                 bt=batch_time.val,
+    #                 total=bar.elapsed_td,
+    #                 eta=bar.eta_td,
+    #                 loss=losses.avg,
+    #                 top1=top1.avg,
+    #                 top5=top5.avg,
+    #                 )
+    #     bar.next()
+    # bar.finish()
     return (losses.avg, top1.avg)
 
 
@@ -210,7 +220,7 @@ def validate(val_loader, model, criterion):
 
     # switch to evaluate mode
     model.eval()
-    bar = Bar('Testing ', max=len(val_loader))
+    #bar = Bar('Testing ', max=len(val_loader))
     with torch.no_grad():
         end = time.time()
         for batch_idx, (input, target) in enumerate(val_loader):
@@ -235,19 +245,19 @@ def validate(val_loader, model, criterion):
             end = time.time()
 
              # plot progress
-            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                        batch=batch_idx + 1,
-                        size=len(val_loader),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        total=bar.elapsed_td,
-                        eta=bar.eta_td,
-                        loss=losses.avg,
-                        top1=top1.avg,
-                        top5=top5.avg,
-                        )
-            bar.next()
-        bar.finish()
+            # bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+            #             batch=batch_idx + 1,
+            #             size=len(val_loader),
+            #             data=data_time.avg,
+            #             bt=batch_time.avg,
+            #             total=bar.elapsed_td,
+            #             eta=bar.eta_td,
+            #             loss=losses.avg,
+            #             top1=top1.avg,
+            #             top5=top5.avg,
+            #             )
+            #bar.next()
+        #bar.finish()
     return (losses.avg, top1.avg)
 
 

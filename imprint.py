@@ -14,7 +14,8 @@ import torchvision.transforms as transforms
 import models
 import loader
 
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+# from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data', metavar='DIR', default='CUB_200_2011',
@@ -31,7 +32,7 @@ parser.add_argument('--random', action='store_true', help='whether use random no
 parser.add_argument('--num-sample', default=1, type=int,
                     metavar='N', help='number of novel sample (default: 1)')
 parser.add_argument('--test-novel-only', action='store_true', help='whether only test on novel classes')
-parser.add_argument('--aug', action='store_true', help='whether use data augmentation during training')
+parser.add_argument('--aug', default=0, type=int, help='whether use data augmentation during training')
 best_prec1 = 0
 
 
@@ -74,8 +75,8 @@ def main():
     novel_dataset = loader.ImageLoader(
         args.data,
         novel_trasforms,
-        train=True, num_classes=200, 
-        num_train_sample=args.num_sample, 
+        train=True, num_classes=200,
+        num_train_sample=args.num_sample,
         novel_only=True, aug=args.aug)
 
     novel_loader = torch.utils.data.DataLoader(
@@ -100,6 +101,8 @@ def main():
             'best_prec1': test_acc,
         }, checkpoint=args.checkpoint)
 
+    print('Test acc:')
+    print(test_acc)
 
 def imprint(novel_loader, model):
     batch_time = AverageMeter()
@@ -107,7 +110,7 @@ def imprint(novel_loader, model):
     # switch to evaluate mode
     model.eval()
     end = time.time()
-    bar = Bar('Imprinting', max=len(novel_loader))
+    #bar = Bar('Imprinting', max=len(novel_loader))
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(novel_loader):
             # measure data loading time
@@ -116,11 +119,11 @@ def imprint(novel_loader, model):
             input = input.cuda()
 
             # compute output
-            output = model.extract(input)
+            output = model.extract(input) #64,256
 
             if batch_idx == 0:
                 output_stack = output
-                target_stack = target
+                target_stack = target #64
             else:
                 output_stack = torch.cat((output_stack, output), 0)
                 target_stack = torch.cat((target_stack, target), 0)
@@ -129,20 +132,20 @@ def imprint(novel_loader, model):
             end = time.time()
 
             # plot progress
-            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:}'.format(
-                        batch=batch_idx + 1,
-                        size=len(novel_loader),
-                        data=data_time.val,
-                        bt=batch_time.val,
-                        total=bar.elapsed_td,
-                        eta=bar.eta_td
-                        )
-            bar.next()
-        bar.finish()
+        #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:}'.format(
+        #                 batch=batch_idx + 1,
+        #                 size=len(novel_loader),
+        #                 data=data_time.val,
+        #                 bt=batch_time.val,
+        #                 total=bar.elapsed_td,
+        #                 eta=bar.eta_td
+        #                 )
+        #     bar.next()
+        # bar.finish()
     
     new_weight = torch.zeros(100, 256)
-    for i in range(100):
-        tmp = output_stack[target_stack == (i + 100)].mean(0) if not args.random else torch.randn(256)
+    for i in range(100): #i+100: 100-199
+        tmp = output_stack[target_stack == (i + 100)].mean(0) if not args.random else torch.randn(256) #256
         new_weight[i] = tmp / tmp.norm(p=2)
     weight = torch.cat((model.classifier.fc.weight.data, new_weight.cuda()))
     model.classifier.fc = nn.Linear(256, 200, bias=False)
@@ -156,7 +159,7 @@ def validate(val_loader, model):
 
     # switch to evaluate mode
     model.eval()
-    bar = Bar('Testing   ', max=len(val_loader))
+    #bar = Bar('Testing   ', max=len(val_loader))
     with torch.no_grad():
         end = time.time()
         for batch_idx, (input, target) in enumerate(val_loader):
@@ -167,7 +170,7 @@ def validate(val_loader, model):
             target = target.cuda(non_blocking=True)
 
             # compute output
-            output = model(input)
+            output = model(input) #64,200
 
             # measure accuracy
             prec1, prec5 = accuracy(output, target, topk=(1, 5))
@@ -179,18 +182,18 @@ def validate(val_loader, model):
             end = time.time()
 
              # plot progress
-            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                        batch=batch_idx + 1,
-                        size=len(val_loader),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        total=bar.elapsed_td,
-                        eta=bar.eta_td,
-                        top1=top1.avg,
-                        top5=top5.avg,
-                        )
-            bar.next()
-        bar.finish()
+        #     bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+        #                 batch=batch_idx + 1,
+        #                 size=len(val_loader),
+        #                 data=data_time.avg,
+        #                 bt=batch_time.avg,
+        #                 total=bar.elapsed_td,
+        #                 eta=bar.eta_td,
+        #                 top1=top1.avg,
+        #                 top5=top5.avg,
+        #                 )
+        #     bar.next()
+        # bar.finish()
     return top1.avg
 
 

@@ -20,7 +20,7 @@ class ImageLoader(torch.utils.data.Dataset):
         img_labels = pd.read_csv(os.path.join(root, "image_class_labels.txt"), sep=" ", header=None,  names=['idx', 'label'])
         train_test_split = pd.read_csv(os.path.join(root, "train_test_split.txt"), sep=" ", header=None,  names=['idx', 'train_flag'])
         data = pd.concat([img_paths, img_labels, train_test_split], axis=1)
-        data = data[data['train_flag'] == train]
+        data = data[data['train_flag'] == train] #train is True in train, False in val
         data['label'] = data['label'] - 1
 
         # split dataset

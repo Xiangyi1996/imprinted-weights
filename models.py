@@ -23,7 +23,7 @@ class Net(nn.Module):
         return x
 
     def extract(self, x):
-        x = self.extractor(x)
+        x = self.extractor(x) #64, 2048
         x = self.embedding(x)
         x = self.l2_norm(x)
         return x
@@ -53,7 +53,7 @@ class Extractor(nn.Module):
         self.extractor = nn.Sequential(*list(basenet.children())[:-1])
 
     def forward(self, x):
-        x = self.extractor(x)
+        x = self.extractor(x) #exclude the final layer: fc
         x = x.view(x.size(0), -1)
         return x
 
